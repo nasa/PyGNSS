@@ -2,11 +2,11 @@
 Title/Version
 -------------
 Python CYGNSS Toolkit (PyGNSS)
-pygnss v0.3
+pygnss v0.4
 Developed & tested with Python 2.7.x
-Last changed 3/19/2015
-    
-    
+Last changed 07/02/2015
+
+
 Author
 ------
 Timothy Lang
@@ -18,7 +18,7 @@ timothy.j.lang@nasa.gov
 Overview
 --------
 This module enables the ingest, analysis, and plotting of Cyclone Global
-Navigation Satellite System (CYGNSS) End-to-End Simulator (E2ES) input and 
+Navigation Satellite System (CYGNSS) End-to-End Simulator (E2ES) input and
 output data. To use, place in PYTHONPATH and use the following import command:
 import pygnss
 
@@ -30,15 +30,18 @@ Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os
 
 Change Log
 ----------
-v0.3 Major Changes (3/19/2015)
+v0.4 Major Changes (07/02/2015)
+1. Made all code pep8 compliant.
+
+v0.3 Major Changes (03/19/2015)
 1. Documentation improvements. Doing help(pygnss) should be more useful now.
 2. Fixed bug where GoodData attribute was not getting set for CygnssSingleSat
    objects after they were input into CygnssL2WindDisplay.
-3. Fixes to ensure CygnssSingle/MultiSat classes can ingest L1 DDM files without
+3. Fixes to ensure CygnssSingle/MultiSat classes can ingest L1 DDM files w/out
    errors. This provides a basis for adding L1 DDM functionality to PyGNSS.
 4. Swapped out np.rank for np.ndim due to annoying deprecation warnings.
 
-v0.2 Major Changes (2/24/2015)
+v0.2 Major Changes (02/24/2015)
 1. Fixed miscellaneous bugs related to data subsectioning and plotting.
 2. Added histogram plot for CYGNSS vs. Truth winds.
 
@@ -46,19 +49,19 @@ v0.1 Functionality:
 1. Reads netCDFs for input to CYGNSS E2ES as well as output files.
 2. Can ingest single-satellite data or merge all 8 together.
 3. Capable of masking L2 wind data by RangeCorrectedGain.
-4. Basic display objects and plotting routines exist for input/output data, with
+4. Basic display objects & plotting routines exist for input/output data, w/
    support for combined input/output plots.
 
 
 Planned Updates
 ---------------
-1. Enable subsectioning of output data specifically by time rather than by index.
+1. Enable subsectioning of output data specifically by time rather than index.
 2. Support for DDM file analysis/plotting
 3. Merged input/output display object for 1-command combo plots given proper
    inputs.
 4. Get CygnssL2WindDisplay.specular_plot() to automatically adjust size of
    points to reflect actual CYGNSS spatial resolution on Basemap. Right now,
-   user just has manual control of the marker size and would need to guess at 
+   user just has manual control of the marker size and would need to guess at
    this if they want the specular points to be truly spatially accurate.
 5. Incorporate land/ocean flag in non-Basemap CYGNSS plots
 
@@ -70,14 +73,15 @@ from netCDF4 import Dataset
 from warnings import warn
 import os
 
-VERSION = '0.3'
+VERSION = '0.4'
 
 #########################
 
+
 class NetcdfFile(object):
-    
+
     """Base class used for reading netCDF-format L1 and L2 CYGNSS data files"""
-    
+
     def __init__(self, filename=None):
         try:
             self.read_netcdf(filename)
@@ -89,7 +93,7 @@ class NetcdfFile(object):
         volume = Dataset(filename, 'r')
         self.filename = os.path.basename(filename)
         self.fill_variables(volume)
-    
+
     def fill_variables(self, volume):
         """Loop thru all variables and store them as attributes"""
         self.variable_list = volume.variables.keys()
@@ -99,14 +103,15 @@ class NetcdfFile(object):
 
 #########################
 
+
 class CygnssSingleSat(NetcdfFile):
-    
+
     """
     Child class of NetcdfFile. Can ingest both L2 Wind and DDM files.
     All variables within the files are incorporated as attributes of the
     class. This class forms the main building block of PyGNSS.
     """
-    
+
     def get_gain_mask(self, number=4):
         """
         With L2 wind data, identifies top specular points in terms of
@@ -118,28 +123,29 @@ class CygnssSingleSat(NetcdfFile):
         if hasattr(self, 'RangeCorrectedGain'):
             self.GoodData = 0 * np.int16(self.RangeCorrectedGain)
             indices = np.argsort(self.RangeCorrectedGain, axis=1)
-            max4 = indices[:,-1*number:]
+            max4 = indices[:, -1*number:]
             for i in np.arange(np.shape(self.RangeCorrectedGain)[0]):
-                self.GoodData[i,max4[i]] = 1
+                self.GoodData[i, max4[i]] = 1
             self.variable_list.append('GoodData')
 
 #########################
 
+
 class CygnssMultiSat(object):
-    
+
     """
     Can ingest both L2 Wind and L1 DDM files. Merges the CYGNSS constellation's
     individual satellites' data together into a class structure very similar to
     CygnssSingleSat, just with bigger array dimensions.
     """
-    
+
     def __init__(self, l2list, number=4):
         """
         l2list = list of CygnssL2SingleSat objects or files
         number = Number of maximum RangeCorrectedGain slots to consider
         """
-        warntxt = 'Requires input list of CygnssSingleSat '+\
-                  'objects or L2 wind files'
+        warntxt = 'Requires input list of CygnssSingleSat ' + \
+            'objects or L2 wind files'
         try:
             test = l2list[0].WindSpeed
         except:
@@ -159,7 +165,7 @@ class CygnssMultiSat(object):
                 return
         self.satellites = l2list
         self.merge_cygnss_data()
-        
+
     def merge_cygnss_data(self):
         """
         Loop over each satellite and append its data to the master arrays
@@ -169,67 +175,73 @@ class CygnssMultiSat(object):
                 self.variable_list = sat.variable_list
                 for var in sat.variable_list:
                     setattr(self, var, getattr(sat, var))
-            else:    
+            else:
                 for var in sat.variable_list:
                     array = getattr(sat, var)
                     if np.ndim(array) == 1:
                         new_array = np.append(getattr(self, var), array)
                         setattr(self, var, new_array)
                     elif np.ndim(array) == 2:
-                        new_array = np.append(getattr(self, var), array, axis=1)
+                        new_array = np.append(
+                            getattr(self, var), array, axis=1)
                         setattr(self, var, new_array)
                     else:
-                        pass #for now ...
+                        pass  # for now ...
 
 #########################
 
+
 class CygnssL2WindDisplay(object):
-    
+
     """
-    This display class provides an avenue for making plots from CYGNSS L2 wind 
+    This display class provides an avenue for making plots from CYGNSS L2 wind
     data.
     """
-    
+
     def __init__(self, cygnss_sat_object, number=4):
-        
+
         """
-        cygnss_sat_object = CygnssSingle/MultiSat object, single L2 file, or list
-                            of files.
-        number = Number of specular points to consider in the RangeCorrectedGain
+        cygnss_sat_object = CygnssSingle/MultiSat object, single L2 file,
+                            or list of files.
+        number = Number of specular points to consider in RangeCorrectedGain
                  rankings.
         """
-        #If passed string(s), try to read the file(s) & make the wind data object
+        # If passed string(s), try to read file(s) & make the wind data object
         flag = check_for_strings(cygnss_sat_object)
         if flag == 1:
             cygnss_sat_object = CygnssSingleSat(cygnss_sat_object)
         if flag == 2:
-            cygnss_sat_object = CygnssMultiSat(cygnss_sat_object, number=number)
+            cygnss_sat_object = CygnssMultiSat(cygnss_sat_object,
+                                               number=number)
         if not hasattr(cygnss_sat_object, 'GoodData'):
             try:
                 cygnss_sat_object.get_gain_mask(number=number)
             except:
                 pass
-        #Try again to confirm L2, this avoids problems caused by ingest of L1 DDM
+        # Try again to confirm L2, this avoids problems
+        # caused by ingest of L1 DDM
         if not hasattr(cygnss_sat_object, 'GoodData'):
             warn('Not a CYGNSS L2 wind object most likely, failing ...')
             return
         for var in cygnss_sat_object.variable_list:
             setattr(self, var, getattr(cygnss_sat_object, var))
         if hasattr(cygnss_sat_object, 'satellites'):
-            setattr(self, 'satellites', getattr(cygnss_sat_object, 'satellites'))
+            setattr(self, 'satellites', getattr(cygnss_sat_object,
+                                                'satellites'))
             self.multi_flag = True
         else:
             self.multi_flag = False
-        
-    def specular_plot(self, cmap='YlOrRd', title='CYGNSS data', vmin=0, vmax=30,
-                      ms=50, marker='o', bad=-500, fig=None, ax=None,
+
+    def specular_plot(self, cmap='YlOrRd', title='CYGNSS data', vmin=0,
+                      vmax=30, ms=50, marker='o', bad=-500, fig=None, ax=None,
                       colorbar_flag=False, basemap=None, edge_flag=False,
                       axis_label_flag=False, title_flag=True, indices=None,
-                      save=None, lonrange=None, latrange=None):
+                      save=None, lonrange=None, latrange=None,
+                      truth_flag=False):
         """
         Plots CYGNSS specular points on lat/lon axes using matplotlib's scatter
         object, which colors each point based on its wind speed value.
-        
+
         cmap = matplotlib or user-defined colormap
         title = Title of plot
         vmin = Lowest wind speed value to display on color table
@@ -245,13 +257,15 @@ class CygnssL2WindDisplay(object):
                     point more distinctive
         axis_label_flag = Set to True to label lat/lon axes
         title_flag = Set to False to suppress title
-        indices = Indices (2-element tuple) to use to limit the period of data 
+        indices = Indices (2-element tuple) to use to limit the period of data
                   shown (i.e., limit by time)
         save = Name of image file to save plot to
         lonrange = 2-element tuple to limit longitude range of plot
         latrange = 2-element tuple to limit latitude range of plot
         """
-        ws, lon, lat, gd = self.subsection_data(indices)
+        ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
+        if truth_flag:
+            ws = tws
         good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
         if np.size(lon[good]) == 0:
             print 'No good specular points, not plotting'
@@ -285,10 +299,10 @@ class CygnssL2WindDisplay(object):
 
     def get_good_data_mask(self, ws, lon, lat, gd, bad=-500):
         """
-        Returns a mask used to limit the data plotted. Filtered out are data 
-        masked out by the GoodData mask (based on RangeCorrectedGain), missing 
+        Returns a mask used to limit the data plotted. Filtered out are data
+        masked out by the GoodData mask (based on RangeCorrectedGain), missing
         lat/lon values, and bad data (ws < 0)
-        
+
         ws = Wind speed array
         lon = Longitude array
         lat = Latitude array
@@ -303,7 +317,7 @@ class CygnssL2WindDisplay(object):
         """
         This method subsections the L2 wind data and returns these as arrays
         ready to plot.
-        
+
         indices = 2-element tuple of indices to subsection the data in time
         truth_flag = Allows the subsectioning of TruthWindSpeed for histogram
                      plots
@@ -332,9 +346,9 @@ class CygnssL2WindDisplay(object):
                        ax=None, axis_label_flag=False, title_flag=True,
                        indices=None, bins=10, bad=-500, save=None):
         """
-        Plots a normalized histogram of CYGNSS wind speed vs. the true wind speed
+        Plots a normalized histogram of CYGNSS wind speed vs. true wind speed
         (as provided by the input data to the E2ES).
-        
+
         bins = Number of bins to use in the histogram
         title = Title of plot
         bad = Bad value of Lat/Lon to throw out
@@ -342,7 +356,7 @@ class CygnssL2WindDisplay(object):
         ax = matplotlib Axes object to use
         axis_label_flag = Set to True to label lat/lon axes
         title_flag = Set to False to suppress title
-        indices = Indices (2-element tuple) to use to limit the period of data 
+        indices = Indices (2-element tuple) to use to limit the period of data
                   shown (i.e., limit by time)
         save = Name of image file to save plot to
         """
@@ -363,42 +377,46 @@ class CygnssL2WindDisplay(object):
 
 #########################
 
+
 class E2esInputData(NetcdfFile):
-    
+
     """Base class for ingesting E2ES input data. Child class of NetcdfFile."""
-    
+
     def get_wind_speed(self):
         """
         Input E2ES data normally don't have wind speed as a field. This method
         fixes that.
         """
-        self.WindSpeed = np.sqrt(self.eastward_wind**2 + self.northward_wind**2)
+        self.WindSpeed = np.sqrt(self.eastward_wind**2 +
+                                 self.northward_wind**2)
         self.variable_list.append('WindSpeed')
 
 #########################
 
+
 class InputWindDisplay(object):
-    
+
     """Display object for the E2ES input data"""
-    
+
     def __init__(self, input_winds_object):
         """
         input_winds_object = Input E2esInputData object or wind file
         """
-        #If passed a string, try to read the file and make the input data object
+        # If passed a string, try to read the file & make input data object
         if isinstance(input_winds_object, str):
             input_winds_object = E2esInputData(input_winds_object)
         if not hasattr(input_winds_object, 'WindSpeed'):
             input_winds_object.get_wind_speed()
         for var in input_winds_object.variable_list:
             setattr(self, var, getattr(input_winds_object, var))
+        self.make_coordinates_2d()
 
     def basemap_plot(self, fill_color='#ACACBF', ax=None, fig=None,
                      time_index=0, cmap='YlOrRd', vmin=0, vmax=30,
                      colorbar_flag=True, return_flag=True, save=None,
                      title='Input Wind Speed', title_flag=True):
         """
-        Plots E2ES input wind speed data on a Basemap using matplotlib's 
+        Plots E2ES input wind speed data on a Basemap using matplotlib's
         pcolormesh object. Defaults to return the Basemap object so other
         things (e.g., CYGNSS data) can be overplotted.
 
@@ -419,7 +437,8 @@ class InputWindDisplay(object):
         fig, ax = parse_fig_ax(fig, ax)
         m = get_basemap(lonrange=[np.min(self.longitude),
                                   np.max(self.longitude)],
-                        latrange=[np.min(self.latitude), np.max(self.latitude)])
+                        latrange=[np.min(self.latitude),
+                                  np.max(self.latitude)])
         m.fillcontinents(color=fill_color)
         x, y = m(self.longitude, self.latitude)
         cs = m.pcolormesh(x, y, self.WindSpeed[time_index],
@@ -434,13 +453,20 @@ class InputWindDisplay(object):
         if return_flag:
             return m
 
-#########################
-#Independent Functions Follow
-#########################
+    def make_coordinates_2d(self):
+        if np.ndim(self.longitude) == 1:
+            lon2d, lat2d = np.meshgrid(self.longitude, self.latitude)
+            self.longitude = lon2d
+            self.latitude = lat2d
+
+##############################
+# Independent Functions Follow
+##############################
+
 
 def parse_fig_ax(fig, ax):
     """
-    Parse matplotlib Figure and Axes objects, if provided, or just grab the 
+    Parse matplotlib Figure and Axes objects, if provided, or just grab the
     current ones in memory.
     """
     if fig is None:
@@ -449,16 +475,17 @@ def parse_fig_ax(fig, ax):
         ax = plt.gca()
     return fig, ax
 
-def get_basemap(latrange=[-90,90], lonrange=[-180,180], resolution='l',
+
+def get_basemap(latrange=[-90, 90], lonrange=[-180, 180], resolution='l',
                 area_thresh=1000):
     """
-    Function to create a specifically formatted Basemap provided the input 
+    Function to create a specifically formatted Basemap provided the input
     parameters.
-    
+
     latrange = Latitude range of the plot (2-element tuple)
     lonrange = Longitude range of the plot (2-element tuple)
     resolution = Resolution of the Basemap
-    area_thresh = Threshold (in km^**2) for displaying small features, such as 
+    area_thresh = Threshold (in km^**2) for displaying small features, such as
                   lakes/islands
     """
     lon_0 = np.mean(lonrange)
@@ -466,17 +493,19 @@ def get_basemap(latrange=[-90,90], lonrange=[-180,180], resolution='l',
     m = Basemap(projection='merc', lon_0=lon_0, lat_0=lat_0, lat_ts=lat_0,
                 llcrnrlat=np.min(latrange), urcrnrlat=np.max(latrange),
                 llcrnrlon=np.min(lonrange), urcrnrlon=np.max(lonrange),
-                rsphere=6371200., resolution=resolution, area_thresh=area_thresh)
+                rsphere=6371200., resolution=resolution,
+                area_thresh=area_thresh)
     m.drawcoastlines()
     m.drawstates()
     m.drawcountries()
     return m
 
+
 def check_for_strings(var):
     """
-    Given an input var, check to see if it is a string (scalar or array of 
+    Given an input var, check to see if it is a string (scalar or array of
     strings), or something else.
-    
+
     Output:
     0 = non-string, 1 = string scalar, 2 = string array
     """
@@ -490,4 +519,3 @@ def check_for_strings(var):
             if not isinstance(val, str):
                 return 0
         return 2
-
