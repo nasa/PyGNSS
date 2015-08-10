@@ -2,9 +2,9 @@
 Title/Version
 -------------
 Python CYGNSS Toolkit (PyGNSS)
-pygnss v0.4
-Developed & tested with Python 2.7.x
-Last changed 07/02/2015
+pygnss v0.5
+Developed & tested with Python 2.7 and 3.4
+Last changed 08/10/2015
 
 
 Author
@@ -25,11 +25,14 @@ import pygnss
 
 Notes
 -----
-Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os
+Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six
 
 
 Change Log
 ----------
+v0.5 Major Changes (08/10/2015)
+1. Supports Python 3 now.
+
 v0.4 Major Changes (07/02/2015)
 1. Made all code pep8 compliant.
 
@@ -66,14 +69,16 @@ Planned Updates
 5. Incorporate land/ocean flag in non-Basemap CYGNSS plots
 
 """
+from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset
 from warnings import warn
 import os
+from six import string_types
 
-VERSION = '0.4'
+VERSION = '0.5'
 
 #########################
 
@@ -96,10 +101,11 @@ class NetcdfFile(object):
 
     def fill_variables(self, volume):
         """Loop thru all variables and store them as attributes"""
-        self.variable_list = volume.variables.keys()
-        for key in self.variable_list:
+        self.variable_list = []
+        for key in volume.variables.keys():
             new_var = np.array(volume.variables[key][:])
             setattr(self, key, new_var)
+            self.variable_list.append(key)
 
 #########################
 
@@ -150,7 +156,7 @@ class CygnssMultiSat(object):
             test = l2list[0].WindSpeed
         except:
             try:
-                if isinstance(l2list[0], str):
+                if isinstance(l2list[0], string_types):
                     tmplist = []
                     for filen in l2list:
                         sat = CygnssSingleSat(filen)
@@ -268,7 +274,7 @@ class CygnssL2WindDisplay(object):
             ws = tws
         good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
         if np.size(lon[good]) == 0:
-            print 'No good specular points, not plotting'
+            print('No good specular points, not plotting')
             return
         fig, ax = parse_fig_ax(fig, ax)
         if edge_flag:
@@ -363,7 +369,7 @@ class CygnssL2WindDisplay(object):
         ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
         good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
         if np.size(lon[good]) == 0:
-            print 'No good specular points, not plotting'
+            print('No good specular points, not plotting')
             return
         fig, ax = parse_fig_ax(fig, ax)
         ax.hist(ws[good].ravel()-tws[good].ravel(), bins=bins, normed=True)
@@ -403,7 +409,7 @@ class InputWindDisplay(object):
         input_winds_object = Input E2esInputData object or wind file
         """
         # If passed a string, try to read the file & make input data object
-        if isinstance(input_winds_object, str):
+        if isinstance(input_winds_object, string_types):
             input_winds_object = E2esInputData(input_winds_object)
         if not hasattr(input_winds_object, 'WindSpeed'):
             input_winds_object.get_wind_speed()
@@ -510,12 +516,12 @@ def check_for_strings(var):
     0 = non-string, 1 = string scalar, 2 = string array
     """
     if np.size(var) == 1:
-        if isinstance(var, str):
+        if isinstance(var, string_types):
             return 1
         else:
             return 0
     else:
         for val in var:
-            if not isinstance(val, str):
+            if not isinstance(val, string_types):
                 return 0
         return 2
