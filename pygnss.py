@@ -2,9 +2,8 @@
 Title/Version
 -------------
 Python CYGNSS Toolkit (PyGNSS)
-pygnss v0.5
+pygnss v0.6
 Developed & tested with Python 2.7 and 3.4
-Last changed 08/10/2015
 
 
 Author
@@ -30,6 +29,11 @@ Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six
 
 Change Log
 ----------
+v0.6 Major Changes (11/20/2015)
+1. Added hist2d_plot method to CygnssL2WindDisplay.
+2. Added threshold keyword to allow filtering of histrogram figures by
+   RangeCorrectedGain windows.
+
 v0.5 Major Changes (08/10/2015)
 1. Supports Python 3 now.
 
@@ -78,7 +82,7 @@ from warnings import warn
 import os
 from six import string_types
 
-VERSION = '0.5'
+VERSION = '0.6'
 
 #########################
 
@@ -350,7 +354,8 @@ class CygnssL2WindDisplay(object):
 
     def histogram_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
                        ax=None, axis_label_flag=False, title_flag=True,
-                       indices=None, bins=10, bad=-500, save=None):
+                       indices=None, bins=10, bad=-500, save=None,
+                       threshold=None):
         """
         Plots a normalized histogram of CYGNSS wind speed vs. true wind speed
         (as provided by the input data to the E2ES).
@@ -368,6 +373,7 @@ class CygnssL2WindDisplay(object):
         """
         ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
         good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
+        good = self._parse_threshold(threshold, good)
         if np.size(lon[good]) == 0:
             print('No good specular points, not plotting')
             return
@@ -380,6 +386,71 @@ class CygnssL2WindDisplay(object):
             plt.title(title)
         if save is not None:
             plt.savefig(save)
+
+    def hist2d_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
+                    ax=None, axis_label_flag=False, title_flag=True,
+                    indices=None, bins=20, bad=-500, save=None,
+                    threshold=None, colorbar_flag=True,
+                    cmap='YlOrRd', range=(0, 20), ls='--',
+                    add_line=True, line_color='r',
+                    colorbar_label_flag=True, **kwargs):
+        """
+        Plots a normalized 2D histogram of CYGNSS wind speed vs. true wind speed
+        (as provided by the input data to the E2ES). This information can be
+        thresholded by RangeCorrectedGain
+
+        bins = Number of bins to use in the histogram
+        title = Title of plot
+        bad = Bad value of Lat/Lon to throw out
+        fig = matplotlib Figure object to use
+        ax = matplotlib Axes object to use
+        axis_label_flag = Set to True to label lat/lon axes
+        title_flag = Set to False to suppress title
+        indices = Indices (2-element tuple) to use to limit the period of data
+                  shown (i.e., limit by time)
+        save = Name of image file to save plot to
+        **kwargs = Whatever else pyplot.hist2d will accept
+        """
+        ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
+        good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
+        good = self._parse_threshold(threshold, good)
+        if np.size(lon[good]) == 0:
+            print('No good specular points, not plotting')
+            return
+        fig, ax = parse_fig_ax(fig, ax)
+        H, xedges, yedges, img = ax.hist2d(
+            ws[good].ravel(), tws[good].ravel(), bins=bins,
+            normed=True, cmap=cmap, zorder=1, range=[range, range],
+            **kwargs)
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+        im = ax.imshow(H.T, cmap=cmap, extent=extent, zorder=0)
+        ax.set_xlim(range)
+        ax.set_ylim(range)
+        if add_line:
+            ax.plot(range, range, ls=ls,
+                    color=line_color, lw=2, zorder=2)
+        if axis_label_flag:
+            ax.set_xlabel('CYGNSS Wind Speed (m/s)')
+            ax.set_ylabel('True Wind Speed (m/s)')
+        if title_flag:
+            ax.set_title(title)
+        if colorbar_flag:
+            if colorbar_label_flag:
+                label='Frequency'
+            else:
+                label=''
+            plt.colorbar(im, label=label, ax=ax, shrink=0.75)
+        if save is not None:
+            plt.savefig(save)
+
+    def _parse_threshold(self, threshold, good):
+        if threshold is not None:
+            if np.size(threshold) == 2:
+                cond = np.logical_and(
+                    self.RangeCorrectedGain >= threshold[0],
+                    self.RangeCorrectedGain < threshold[1])
+                good = np.logical_and(good, cond)
+        return good
 
 #########################
 
