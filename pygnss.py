@@ -382,8 +382,9 @@ class CygnssL2WindDisplay(object):
                   shown (i.e., limit by time)
         save = Name of image file to save plot to
         """
-        ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
-        good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
+        ws, lon, lat, gd, gps, tws = self.subsection_data(
+            indices, truth_flag=True)
+        good = self.get_good_data_mask(ws, lon, lat, gd, gps, bad=bad)
         good = self._parse_threshold(threshold, good)
         if np.size(lon[good]) == 0:
             print('No good specular points, not plotting')
@@ -422,8 +423,9 @@ class CygnssL2WindDisplay(object):
         save = Name of image file to save plot to
         **kwargs = Whatever else pyplot.hist2d will accept
         """
-        ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
-        good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
+        ws, lon, lat, gd, gps, tws = self.subsection_data(
+            indices, truth_flag=True)
+        good = self.get_good_data_mask(ws, lon, lat, gd, gps, bad=bad)
         good = self._parse_threshold(threshold, good)
         if np.size(lon[good]) == 0:
             print('No good specular points, not plotting')
