@@ -247,7 +247,7 @@ class CygnssL2WindDisplay(object):
                       colorbar_flag=False, basemap=None, edge_flag=False,
                       axis_label_flag=False, title_flag=True, indices=None,
                       save=None, lonrange=None, latrange=None,
-                      truth_flag=False):
+                      truth_flag=False, return_flag=False, gpsid=None):
         """
         Plots CYGNSS specular points on lat/lon axes using matplotlib's scatter
         object, which colors each point based on its wind speed value.
@@ -272,11 +272,16 @@ class CygnssL2WindDisplay(object):
         save = Name of image file to save plot to
         lonrange = 2-element tuple to limit longitude range of plot
         latrange = 2-element tuple to limit latitude range of plot
+        gpsid = Integer ID number for GPS satellite to examine
+        return_flag = Set to True to return Figure, Axes, and Basemap objects
+                      (in that order)
         """
-        ws, lon, lat, gd, tws = self.subsection_data(indices, truth_flag=True)
+        ws, lon, lat, gd, gps, tws = self.subsection_data(
+            indices, truth_flag=True)
         if truth_flag:
             ws = tws
-        good = self.get_good_data_mask(ws, lon, lat, gd, bad=bad)
+        good = self.get_good_data_mask(
+            ws, lon, lat, gd, gps, bad=bad, gpsid=gpsid)
         if np.size(lon[good]) == 0:
             print('No good specular points, not plotting')
             return
@@ -306,8 +311,10 @@ class CygnssL2WindDisplay(object):
             plt.title(title)
         if save is not None:
             plt.savefig(save)
+        if return_flag:
+            return fig, ax, basemap
 
-    def get_good_data_mask(self, ws, lon, lat, gd, bad=-500):
+    def get_good_data_mask(self, ws, lon, lat, gd, gps, bad=-500, gpsid=None):
         """
         Returns a mask used to limit the data plotted. Filtered out are data
         masked out by the GoodData mask (based on RangeCorrectedGain), missing
@@ -321,6 +328,8 @@ class CygnssL2WindDisplay(object):
         """
         good1 = np.logical_and(gd == 1, ws >= 0)
         good2 = np.logical_and(lon > bad, lat > bad)
+        if gpsid is not None and type(gpsid) is int:
+            good2 = np.logical_and(good2, gps == gpsid)
         return np.logical_and(good1, good2)
 
     def subsection_data(self, indices, truth_flag=False):
@@ -335,21 +344,23 @@ class CygnssL2WindDisplay(object):
         if indices is None:
             if not truth_flag:
                 return self.WindSpeed, self.Longitude, self.Latitude,\
-                       self.GoodData
+                       self.GoodData, self.GpsID
             else:
                 return self.WindSpeed, self.Longitude, self.Latitude,\
-                       self.GoodData, self.TruthWindSpeed
+                       self.GoodData, self.GpsID, self.TruthWindSpeed
         else:
             if not truth_flag:
-                return self.WindSpeed[indices[0]:indices[1]][:],\
-                       self.Longitude[indices[0]:indices[1]][:],\
-                       self.Latitude[indices[0]:indices[1]][:],\
-                       self.GoodData[indices[0]:indices[1]][:]
+                return self.WindSpeed[indices[0]:indices[1]][:], \
+                       self.Longitude[indices[0]:indices[1]][:], \
+                       self.Latitude[indices[0]:indices[1]][:], \
+                       self.GoodData[indices[0]:indices[1]][:], \
+                       self.GpsID[indices[0]:indices[1]][:]
             else:
-                return self.WindSpeed[indices[0]:indices[1]][:],\
-                       self.Longitude[indices[0]:indices[1]][:],\
-                       self.Latitude[indices[0]:indices[1]][:],\
-                       self.GoodData[indices[0]:indices[1]][:],\
+                return self.WindSpeed[indices[0]:indices[1]][:], \
+                       self.Longitude[indices[0]:indices[1]][:], \
+                       self.Latitude[indices[0]:indices[1]][:], \
+                       self.GoodData[indices[0]:indices[1]][:], \
+                       self.GpsID[indices[0]:indices[1]][:], \
                        self.TruthWindSpeed[indices[0]:indices[1]][:]
 
     def histogram_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
@@ -491,7 +502,8 @@ class InputWindDisplay(object):
     def basemap_plot(self, fill_color='#ACACBF', ax=None, fig=None,
                      time_index=0, cmap='YlOrRd', vmin=0, vmax=30,
                      colorbar_flag=True, return_flag=True, save=None,
-                     title='Input Wind Speed', title_flag=True):
+                     title='Input Wind Speed', title_flag=True,
+                     show_grid=False):
         """
         Plots E2ES input wind speed data on a Basemap using matplotlib's
         pcolormesh object. Defaults to return the Basemap object so other
@@ -510,6 +522,7 @@ class InputWindDisplay(object):
         title_flag = Set to False to suppress title
         save = Name of image file to save plot to
         colorbar_flag = Set to False to suppress the colorbar
+        show_grid = Set to True to show the lat/lon grid and label it
         """
         fig, ax = parse_fig_ax(fig, ax)
         m = get_basemap(lonrange=[np.min(self.longitude),
@@ -520,6 +533,11 @@ class InputWindDisplay(object):
         x, y = m(self.longitude, self.latitude)
         cs = m.pcolormesh(x, y, self.WindSpeed[time_index],
                           vmin=vmin, vmax=vmax, cmap=cmap)
+        if show_grid:
+            m.drawmeridians(
+                np.arange(-180, 180, 5), labels=[True, True, True, True])
+            m.drawparallels(
+                np.arange(-90, 90, 5), labels=[True, True, True, True])
         if title_flag:
             plt.title(title)
         if colorbar_flag:
