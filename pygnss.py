@@ -2,7 +2,7 @@
 Title/Version
 -------------
 Python CYGNSS Toolkit (PyGNSS)
-pygnss v0.6
+pygnss v0.7
 Developed & tested with Python 2.7 and 3.4
 
 
@@ -24,11 +24,23 @@ import pygnss
 
 Notes
 -----
-Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six
+Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six, datetime
 
 
 Change Log
 ----------
+v0.7 Major Changes (04/19/2016)
+1. Added CygnssSubsection class to consolidate and simplify data subsectioning.
+   Can be called independently, but is also used by the plotting methods in
+   CygnssL2WindDisplay class. Moved the subsection_data and get_good_data_mask
+   methods to this new class, and greatly modifed them to eliminate
+   method returns.
+2. Added ability to subsection data by CYGNSS and GPS satellite numbers, as
+   well as by range-corrected gain threshold or interval. All plotting routines
+   now support these subsectioning capabilities.
+3. Added get_datetime indpendent function to derive datetime objects in the
+   same array shape as the WindSpeed data. Added datetime module dependency.
+
 v0.6 Major Changes (11/20/2015)
 1. Added hist2d_plot method to CygnssL2WindDisplay.
 2. Added threshold keyword to allow filtering of histrogram figures by
@@ -81,8 +93,9 @@ from netCDF4 import Dataset
 from warnings import warn
 import os
 from six import string_types
+import datetime as dt
 
-VERSION = '0.6'
+VERSION = '0.7'
 
 #########################
 
@@ -241,13 +254,15 @@ class CygnssL2WindDisplay(object):
             self.multi_flag = True
         else:
             self.multi_flag = False
+        self.variable_list = cygnss_sat_object.variable_list
 
     def specular_plot(self, cmap='YlOrRd', title='CYGNSS data', vmin=0,
                       vmax=30, ms=50, marker='o', bad=-500, fig=None, ax=None,
                       colorbar_flag=False, basemap=None, edge_flag=False,
                       axis_label_flag=False, title_flag=True, indices=None,
                       save=None, lonrange=None, latrange=None,
-                      truth_flag=False, return_flag=False, gpsid=None):
+                      truth_flag=False, return_flag=False, gpsid=None,
+                      gain=None, sat=None):
         """
         Plots CYGNSS specular points on lat/lon axes using matplotlib's scatter
         object, which colors each point based on its wind speed value.
@@ -273,16 +288,20 @@ class CygnssL2WindDisplay(object):
         lonrange = 2-element tuple to limit longitude range of plot
         latrange = 2-element tuple to limit latitude range of plot
         gpsid = Integer ID number for GPS satellite to examine
+        sat = CYGNSS satellite number (0-7)
+        gain = Threshold for range-corrected gain (RCG). Can be 2-ele. tuple.
+               If so, use only RCG within that range. If scalar, then use
+               data above the given RCG value.
         return_flag = Set to True to return Figure, Axes, and Basemap objects
                       (in that order)
         """
-        ws, lon, lat, gd, gps, tws = self.subsection_data(
-            indices, truth_flag=True)
+        ds = CygnssSubsection(self, indices=indices, bad=bad,
+                              gpsid=gpsid, gain=gain, sat=sat)
         if truth_flag:
-            ws = tws
-        good = self.get_good_data_mask(
-            ws, lon, lat, gd, gps, bad=bad, gpsid=gpsid)
-        if np.size(lon[good]) == 0:
+            ws = ds.tws
+        else:
+            ws = ds.ws
+        if np.size(ds.lon[ds.good]) == 0:
             print('No good specular points, not plotting')
             return
         fig, ax = parse_fig_ax(fig, ax)
@@ -291,16 +310,16 @@ class CygnssL2WindDisplay(object):
         else:
             ec = 'none'
         if basemap is None:
-            sc = ax.scatter(lon[good], lat[good], c=ws[good], vmin=vmin,
-                            vmax=vmax, cmap=cmap, s=ms, marker=marker,
-                            edgecolors=ec)
+            sc = ax.scatter(ds.lon[ds.good], ds.lat[ds.good], c=ws[ds.good],
+                            vmin=vmin, vmax=vmax, cmap=cmap, s=ms,
+                            marker=marker, edgecolors=ec)
             if lonrange is not None:
                 ax.set_xlim(lonrange)
             if latrange is not None:
                 ax.set_ylim(latrange)
         else:
-            x, y = basemap(lon[good], lat[good])
-            sc = basemap.scatter(x, y, c=ws[good], vmin=vmin, vmax=vmax,
+            x, y = basemap(ds.lon[ds.good], ds.lat[ds.good])
+            sc = basemap.scatter(x, y, c=ws[ds.good], vmin=vmin, vmax=vmax,
                                  cmap=cmap, s=ms, marker=marker, edgecolors=ec)
         if colorbar_flag:
             plt.colorbar(sc, label='CYGNSS Wind Speed (m/s)')
@@ -314,59 +333,10 @@ class CygnssL2WindDisplay(object):
         if return_flag:
             return fig, ax, basemap
 
-    def get_good_data_mask(self, ws, lon, lat, gd, gps, bad=-500, gpsid=None):
-        """
-        Returns a mask used to limit the data plotted. Filtered out are data
-        masked out by the GoodData mask (based on RangeCorrectedGain), missing
-        lat/lon values, and bad data (ws < 0)
-
-        ws = Wind speed array
-        lon = Longitude array
-        lat = Latitude array
-        gd = GoodData array
-        bad = Value to compare against lat/lon to mask out missing data
-        """
-        good1 = np.logical_and(gd == 1, ws >= 0)
-        good2 = np.logical_and(lon > bad, lat > bad)
-        if gpsid is not None and type(gpsid) is int:
-            good2 = np.logical_and(good2, gps == gpsid)
-        return np.logical_and(good1, good2)
-
-    def subsection_data(self, indices, truth_flag=False):
-        """
-        This method subsections the L2 wind data and returns these as arrays
-        ready to plot.
-
-        indices = 2-element tuple of indices to subsection the data in time
-        truth_flag = Allows the subsectioning of TruthWindSpeed for histogram
-                     plots
-        """
-        if indices is None:
-            if not truth_flag:
-                return self.WindSpeed, self.Longitude, self.Latitude,\
-                       self.GoodData, self.GpsID
-            else:
-                return self.WindSpeed, self.Longitude, self.Latitude,\
-                       self.GoodData, self.GpsID, self.TruthWindSpeed
-        else:
-            if not truth_flag:
-                return self.WindSpeed[indices[0]:indices[1]][:], \
-                       self.Longitude[indices[0]:indices[1]][:], \
-                       self.Latitude[indices[0]:indices[1]][:], \
-                       self.GoodData[indices[0]:indices[1]][:], \
-                       self.GpsID[indices[0]:indices[1]][:]
-            else:
-                return self.WindSpeed[indices[0]:indices[1]][:], \
-                       self.Longitude[indices[0]:indices[1]][:], \
-                       self.Latitude[indices[0]:indices[1]][:], \
-                       self.GoodData[indices[0]:indices[1]][:], \
-                       self.GpsID[indices[0]:indices[1]][:], \
-                       self.TruthWindSpeed[indices[0]:indices[1]][:]
-
     def histogram_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
                        ax=None, axis_label_flag=False, title_flag=True,
                        indices=None, bins=10, bad=-500, save=None,
-                       threshold=None):
+                       gain=None, sat=None):
         """
         Plots a normalized histogram of CYGNSS wind speed vs. true wind speed
         (as provided by the input data to the E2ES).
@@ -380,17 +350,20 @@ class CygnssL2WindDisplay(object):
         title_flag = Set to False to suppress title
         indices = Indices (2-element tuple) to use to limit the period of data
                   shown (i.e., limit by time)
+        gain = Threshold for range-corrected gain (RCG). Can be 2-ele. tuple.
+               If so, use only RCG within that range. If scalar, then use
+               data above the given RCG value.
         save = Name of image file to save plot to
+        sat = CYGNSS satellite number (0-7)
         """
-        ws, lon, lat, gd, gps, tws = self.subsection_data(
-            indices, truth_flag=True)
-        good = self.get_good_data_mask(ws, lon, lat, gd, gps, bad=bad)
-        good = self._parse_threshold(threshold, good)
-        if np.size(lon[good]) == 0:
+        ds = CygnssSubsection(self, indices=indices, gain=gain, bad=bad,
+                              sat=sat)
+        if np.size(ds.lon[ds.good]) == 0:
             print('No good specular points, not plotting')
             return
         fig, ax = parse_fig_ax(fig, ax)
-        ax.hist(ws[good].ravel()-tws[good].ravel(), bins=bins, normed=True)
+        ax.hist(ds.ws[ds.good].ravel()-ds.tws[ds.good].ravel(), bins=bins,
+                normed=True)
         if axis_label_flag:
             plt.xlabel('CYGNSS Wind Speed - True Wind Speed (m/s)')
             plt.ylabel('Frequency')
@@ -402,12 +375,12 @@ class CygnssL2WindDisplay(object):
     def hist2d_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
                     ax=None, axis_label_flag=False, title_flag=True,
                     indices=None, bins=20, bad=-500, save=None,
-                    threshold=None, colorbar_flag=True,
+                    gain=None, colorbar_flag=True,
                     cmap='YlOrRd', range=(0, 20), ls='--',
-                    add_line=True, line_color='r',
+                    add_line=True, line_color='r', sat=None,
                     colorbar_label_flag=True, **kwargs):
         """
-        Plots a normalized 2D histogram of CYGNSS wind speed vs. true wind speed
+        Plots a normalized 2D histogram of CYGNSS wind speed vs. true wind spd
         (as provided by the input data to the E2ES). This information can be
         thresholded by RangeCorrectedGain
 
@@ -420,19 +393,21 @@ class CygnssL2WindDisplay(object):
         title_flag = Set to False to suppress title
         indices = Indices (2-element tuple) to use to limit the period of data
                   shown (i.e., limit by time)
+        gain = Threshold for range-corrected gain (RCG). Can be 2-ele. tuple.
+               If so, use only RCG within that range. If scalar, then use
+               data above the given RCG value.
         save = Name of image file to save plot to
+        sat = CYGNSS satellite number (0-7)
         **kwargs = Whatever else pyplot.hist2d will accept
         """
-        ws, lon, lat, gd, gps, tws = self.subsection_data(
-            indices, truth_flag=True)
-        good = self.get_good_data_mask(ws, lon, lat, gd, gps, bad=bad)
-        good = self._parse_threshold(threshold, good)
-        if np.size(lon[good]) == 0:
+        ds = CygnssSubsection(self, indices=indices, gain=gain,
+                              bad=bad, sat=sat)
+        if np.size(ds.lon[ds.good]) == 0:
             print('No good specular points, not plotting')
             return
         fig, ax = parse_fig_ax(fig, ax)
         H, xedges, yedges, img = ax.hist2d(
-            ws[good].ravel(), tws[good].ravel(), bins=bins,
+            ds.ws[ds.good].ravel(), ds.tws[ds.good].ravel(), bins=bins,
             normed=True, cmap=cmap, zorder=1, range=[range, range],
             **kwargs)
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
@@ -449,21 +424,95 @@ class CygnssL2WindDisplay(object):
             ax.set_title(title)
         if colorbar_flag:
             if colorbar_label_flag:
-                label='Frequency'
+                label = 'Frequency'
             else:
-                label=''
+                label = ''
             plt.colorbar(im, label=label, ax=ax, shrink=0.75)
         if save is not None:
             plt.savefig(save)
 
-    def _parse_threshold(self, threshold, good):
-        if threshold is not None:
-            if np.size(threshold) == 2:
-                cond = np.logical_and(
-                    self.RangeCorrectedGain >= threshold[0],
-                    self.RangeCorrectedGain < threshold[1])
-                good = np.logical_and(good, cond)
-        return good
+#########################
+
+
+class CygnssSubsection(object):
+
+    """
+    Class to handle subsectioning CYGNSS data. Subsectioning by
+    satellite (via CygnssSingleSat input), time indices, GPS satellite ID,
+    range-corrected gain, etc. is supported.
+
+    Main Attributes
+    ---------------
+    ws = Wind speed array
+    lon = Longitude array
+    lat = Latitude array
+    gd = GoodData array
+    rcg = RangeCorrectedGain array
+    gps = GpsID array
+    """
+
+    def __init__(self, data, indices=None, gpsid=None, gain=None, bad=-500,
+                 sat=None):
+        """
+        data = CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object
+        gpsid = Integer ID number for GPS satellite to examine
+        gain = Threshold by range-corrected gain, values below will be masked
+        bad = Value to compare against lat/lon to mask out missing data
+        sat = CYGNSS satellite number (0-7)
+        """
+        # Set basic attributes based on input data object
+        if sat is not None and hasattr(data, 'satellites'):
+            data = data.satellites[sat]
+        self.ws = data.WindSpeed
+        self.tws = data.TruthWindSpeed
+        self.lon = data.Longitude
+        self.lat = data.Latitude
+        self.gps = data.GpsID
+        self.rcg = data.RangeCorrectedGain
+        self.gd = data.GoodData
+
+        # Set keyword-based attributes
+        self.gpsid = gpsid
+        self.gain = gain
+        self.bad = bad
+        self.indices = indices
+
+        # Now subsection the data
+        self.subsection_data()
+        self.get_good_data_mask()
+
+    def subsection_data(self):
+        """
+        This method subsections the L2 wind data and returns these as arrays
+        ready to plot.
+        """
+        if self.indices is not None:
+            self.ws = self.ws[self.indices[0]:self.indices[1]][:]
+            self.tws = self.tws[self.indices[0]:self.indices[1]][:]
+            self.lon = self.lon[self.indices[0]:self.indices[1]][:]
+            self.lat = self.lat[self.indices[0]:self.indices[1]][:]
+            self.gd = self.gd[self.indices[0]:self.indices[1]][:]
+            self.gps = self.gps[self.indices[0]:self.indices[1]][:]
+            self.rcg = self.rcg[self.indices[0]:self.indices[1]][:]
+
+    def get_good_data_mask(self):
+        """
+        Sets a mask used to limit the data plotted. Filtered out are data
+        masked out by the GoodData mask (based on RangeCorrectedGain), missing
+        lat/lon values, and bad data (ws < 0)
+        """
+        good1 = np.logical_and(self.gd == 1, self.ws >= 0)
+        good2 = np.logical_and(self.lon > self.bad, self.lat > self.bad)
+        if self.gpsid is not None and type(self.gpsid) is int:
+            good2 = np.logical_and(good2, self.gps == self.gpsid)
+        if self.gain is not None:
+            if np.size(self.gain) == 2:
+                cond = np.logical_and(self.rcg >= self.gain[0],
+                                      self.rcg < self.gain[1])
+                good2 = np.logical_and(good2, cond)
+            else:
+                good2 = np.logical_and(good2, self.rcg >= self.gain)
+        self.good = np.logical_and(good1, good2)
 
 #########################
 
@@ -559,6 +608,18 @@ class InputWindDisplay(object):
 ##############################
 # Independent Functions Follow
 ##############################
+
+
+def get_datetime(data):
+    if hasattr(data, 'satellites'):
+        data = data.satellites[0]
+    dts = []
+    for i in np.arange(len(data.Year)):
+        dti = dt.datetime(data.Year[i], data.Month[i], data.Day[i],
+                          data.Hour[i], data.Minute[i], data.Second[i])
+        tmplist = [dti for i in np.arange(15)]
+        dts.append(tmplist)
+    return np.array(dts)
 
 
 def parse_fig_ax(fig, ax):
