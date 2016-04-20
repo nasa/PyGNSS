@@ -658,7 +658,8 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False):
 
     data = CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object
     indices = Indices (2-element tuple) to use to limit the period of data
-              shown (i.e., limit by time)
+              shown (i.e., limit by time). Not usually necessary unless 
+              processing more than one day's worth of data.
     min_samples = Minimum allowable track size (number of specular points)
     verbose = Set to True for some text updates while running
     """
@@ -672,9 +673,11 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False):
         if verbose:
             print('CYGNSS satellite', csat)
         for gsat in range(np.max(data.GpsID)+1):
+            # This will isolate most tracks, improving later cluster analysis
             ds = CygnssTrack(data, datetimes=dts, indices=indices, gpsid=gsat,
                              sat=csat)
             if np.size(ds.lon) > 0:
+                # Cluster analysis separates out any remaining grouped tracks
                 X = list(zip(ds.lon, ds.lat))
                 db = DBSCAN(min_samples=min_samples).fit(X)
                 labels = db.labels_
