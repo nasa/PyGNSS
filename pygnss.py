@@ -24,12 +24,13 @@ import pygnss
 
 Notes
 -----
-Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six, datetime
+Requires - numpy, matplotlib, Basemap, netCDF4, warnings, os, six, datetime,
+           sklearn, copy
 
 
 Change Log
 ----------
-v0.7 Major Changes (04/19/2016)
+v0.7 Major Changes (04/20/2016)
 1. Added CygnssSubsection class to consolidate and simplify data subsectioning.
    Can be called independently, but is also used by the plotting methods in
    CygnssL2WindDisplay class. Moved the subsection_data and get_good_data_mask
@@ -40,6 +41,11 @@ v0.7 Major Changes (04/19/2016)
    now support these subsectioning capabilities.
 3. Added get_datetime indpendent function to derive datetime objects in the
    same array shape as the WindSpeed data. Added datetime module dependency.
+4. Added CygnssTrack class to leverage CygnssSubsection to help isolate
+   and contain all the data from individual tracks.
+5. Added get_tracks independent function to isolate all individual tracks, and
+   return a list of CygnssTrack objects from a CygnssSingleSat, CygnssMultiSat,
+   or CygnssL2WindDisplay object.
 
 v0.6 Major Changes (11/20/2015)
 1. Added hist2d_plot method to CygnssL2WindDisplay.
@@ -94,6 +100,8 @@ from warnings import warn
 import os
 from six import string_types
 import datetime as dt
+from sklearn.cluster import DBSCAN
+from copy import deepcopy
 
 VERSION = '0.7'
 
@@ -459,6 +467,8 @@ class CygnssSubsection(object):
         gain = Threshold by range-corrected gain, values below will be masked
         bad = Value to compare against lat/lon to mask out missing data
         sat = CYGNSS satellite number (0-7)
+        indices = Indices (2-element tuple) to use to limit the period of data
+                  shown (i.e., limit by time)
         """
         # Set basic attributes based on input data object
         if sat is not None and hasattr(data, 'satellites'):
@@ -513,6 +523,38 @@ class CygnssSubsection(object):
             else:
                 good2 = np.logical_and(good2, self.rcg >= self.gain)
         self.good = np.logical_and(good1, good2)
+
+#########################
+
+
+class CygnssTrack(object):
+
+    """
+    Class to facilitate extraction of a single track of specular points
+    from a CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object.
+    """
+
+    def __init__(self, data, datetimes=None, **kwargs):
+        """
+        data = CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object
+        datetimes = List of datetime objects from get_datetime function.
+                    If None, this function is called.
+        """
+        self.input = CygnssSubsection(data, **kwargs)
+        self.ws = self.input.ws[self.input.good]
+        self.tws = self.input.tws[self.input.good]
+        self.lon = self.input.lon[self.input.good]
+        self.lat = self.input.lat[self.input.good]
+        self.rcg = self.input.rcg[self.input.good]
+        if datetimes is None:
+            dts = get_datetime(data)
+        else:
+            dts = datetimes
+        if self.input.indices is not None:
+            self.datetimes = dts[
+                self.input.indices[0]:self.input.indices[1]][self.input.good]
+        else:
+            self.datetimes = dts[self.input.good]
 
 #########################
 
@@ -608,6 +650,47 @@ class InputWindDisplay(object):
 ##############################
 # Independent Functions Follow
 ##############################
+
+
+def get_tracks(data, indices=None, min_samples=10, verbose=False):
+    """
+    Returns a list of CygnssTrack objects from a CYGNSS data or display object
+
+    data = CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object
+    indices = Indices (2-element tuple) to use to limit the period of data
+              shown (i.e., limit by time)
+    min_samples = Minimum allowable track size (number of specular points)
+    verbose = Set to True for some text updates while running
+    """
+    trl = []
+    dts = get_datetime(data)
+    # For some reason range works but np.arange doesn't.
+    for csat in range(8):
+        if not hasattr(data, 'satellites'):
+            if csat > 0:
+                break
+        if verbose:
+            print('CYGNSS satellite', csat)
+        for gsat in range(np.max(data.GpsID)+1):
+            ds = CygnssTrack(data, datetimes=dts, indices=indices, gpsid=gsat,
+                             sat=csat)
+            if np.size(ds.lon) > 0:
+                X = list(zip(ds.lon, ds.lat))
+                db = DBSCAN(min_samples=min_samples).fit(X)
+                labels = db.labels_
+                uniq = np.unique(labels)
+                for element in uniq[uniq >= 0]:
+                    # A bit clunky, but make a copy of the CygnssTrack object
+                    # to help separate out remaining tracks in the scene
+                    dsc = deepcopy(ds)
+                    dsc.lon = ds.lon[labels == element]
+                    dsc.lat = ds.lat[labels == element]
+                    dsc.ws = ds.ws[labels == element]
+                    dsc.tws = ds.tws[labels == element]
+                    dsc.rcg = ds.lon[labels == element]
+                    dsc.datetimes = ds.datetimes[labels == element]
+                    trl.append(dsc)
+    return trl
 
 
 def get_datetime(data):
