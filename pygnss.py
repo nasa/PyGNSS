@@ -419,6 +419,7 @@ class CygnssL2WindDisplay(object):
             ds.ws[ds.good].ravel(), ds.tws[ds.good].ravel(), bins=bins,
             normed=True, cmap=cmap, zorder=1, range=[range, range],
             **kwargs)
+        # These 2 lines are a hack to get color bar, but not plot anything new
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
         im = ax.imshow(H.T, cmap=cmap, extent=extent, zorder=0)
         ax.set_xlim(range)
