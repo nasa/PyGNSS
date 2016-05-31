@@ -42,7 +42,8 @@ v0.7 Major Changes (04/20/2016)
 3. Added get_datetime indpendent function to derive datetime objects in the
    same array shape as the WindSpeed data. Added datetime module dependency.
 4. Added CygnssTrack class to leverage CygnssSubsection to help isolate
-   and contain all the data from individual tracks.
+   and contain all the data from an individual track. Also enables filtering
+   of wind speeds along a track.
 5. Added get_tracks independent function to isolate all individual tracks, and
    return a list of CygnssTrack objects from a CygnssSingleSat, CygnssMultiSat,
    or CygnssL2WindDisplay object.
@@ -532,6 +533,23 @@ class CygnssTrack(object):
     """
     Class to facilitate extraction of a single track of specular points
     from a CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object.
+    
+    
+    Attributes
+    ----------
+    input = CygnssSubsection object
+    ws = CYGNSS wind speeds
+    tws = Truth wind speeds
+    lon = Longitudes of specular points
+    lat = Latitudes of specular points
+    rcg = Range-corrected gains of specular points
+    datetimes = Datetime objects for specular points
+    
+    The following attributes are created by filter_track method:
+    fws = Filtered wind speeds
+    flon = Filtered longitudes
+    flat = Filtered latitudes
+    These attributes are shorter than the main attributes by the window length
     """
 
     def __init__(self, data, datetimes=None, **kwargs):
@@ -555,6 +573,21 @@ class CygnssTrack(object):
                 self.input.indices[0]:self.input.indices[1]][self.input.good]
         else:
             self.datetimes = dts[self.input.good]
+
+    def filter_track(self, window=5):
+        """
+        Applies a running-mean filter to the track.
+
+        window = Number of specular points in the running mean window.
+                 Must be odd.
+        """
+        if window % 2 == 0:
+            raise ValueError('Window must be odd length, not even.')
+        hl = int((window - 1) / 2)
+        self.fws = np.convolve(
+            self.ws, np.ones((window,))/window, mode='valid')
+        self.flon = self.lon[hl:-1*hl]
+        self.flat = self.lat[hl:-1*hl]
 
 #########################
 
@@ -652,7 +685,8 @@ class InputWindDisplay(object):
 ##############################
 
 
-def get_tracks(data, indices=None, min_samples=10, verbose=False):
+def get_tracks(data, indices=None, min_samples=10, verbose=False,
+               filter=False, window=5):
     """
     Returns a list of CygnssTrack objects from a CYGNSS data or display object
 
@@ -662,6 +696,8 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False):
               processing more than one day's worth of data.
     min_samples = Minimum allowable track size (number of specular points)
     verbose = Set to True for some text updates while running
+    filter = Set to True to filter each track
+    window = Window length of filter, in number of specular points. Must be odd.
     """
     trl = []
     dts = get_datetime(data)
@@ -693,6 +729,9 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False):
                     dsc.rcg = ds.lon[labels == element]
                     dsc.datetimes = ds.datetimes[labels == element]
                     trl.append(dsc)
+    if filter:
+        for tr in trl:
+           tr.filter_track(window=window)
     return trl
 
 
