@@ -2,6 +2,9 @@ __pycache__
 notebooks/.ipynb_checkpoints
 notebooks/*.png
 *.pyc
+*.png
+notebooks/*.gif
+*.gif
 old
 release
 notebooks/CYGNSS_L2_Python_Module_Demo.pdf
