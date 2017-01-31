@@ -340,7 +340,7 @@ class CygnssL2WindDisplay(object):
         if save is not None:
             plt.savefig(save)
         if return_flag:
-            return fig, ax, basemap
+            return fig, ax, basemap, sc
 
     def histogram_plot(self, title='CYGNSS Winds vs. True Winds', fig=None,
                        ax=None, axis_label_flag=False, title_flag=True,
