@@ -271,7 +271,7 @@ class CygnssL2WindDisplay(object):
                       axis_label_flag=False, title_flag=True, indices=None,
                       save=None, lonrange=None, latrange=None,
                       truth_flag=False, return_flag=False, gpsid=None,
-                      gain=None, sat=None):
+                      gain=None, sat=None, **kwargs):
         """
         Plots CYGNSS specular points on lat/lon axes using matplotlib's scatter
         object, which colors each point based on its wind speed value.
@@ -321,7 +321,7 @@ class CygnssL2WindDisplay(object):
         if basemap is None:
             sc = ax.scatter(ds.lon[ds.good], ds.lat[ds.good], c=ws[ds.good],
                             vmin=vmin, vmax=vmax, cmap=cmap, s=ms,
-                            marker=marker, edgecolors=ec)
+                            marker=marker, edgecolors=ec, **kwargs)
             if lonrange is not None:
                 ax.set_xlim(lonrange)
             if latrange is not None:
@@ -329,7 +329,8 @@ class CygnssL2WindDisplay(object):
         else:
             x, y = basemap(ds.lon[ds.good], ds.lat[ds.good])
             sc = basemap.scatter(x, y, c=ws[ds.good], vmin=vmin, vmax=vmax,
-                                 cmap=cmap, s=ms, marker=marker, edgecolors=ec)
+                                 cmap=cmap, s=ms, marker=marker, edgecolors=ec,
+                                 **kwargs)
         if colorbar_flag:
             plt.colorbar(sc, label='CYGNSS Wind Speed (m/s)')
         if axis_label_flag:
@@ -534,8 +535,7 @@ class CygnssTrack(object):
     """
     Class to facilitate extraction of a single track of specular points
     from a CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object.
-    
-    
+
     Attributes
     ----------
     input = CygnssSubsection object
@@ -545,7 +545,7 @@ class CygnssTrack(object):
     lat = Latitudes of specular points
     rcg = Range-corrected gains of specular points
     datetimes = Datetime objects for specular points
-    
+
     The following attributes are created by filter_track method:
     fws = Filtered wind speeds
     flon = Filtered longitudes
@@ -693,12 +693,12 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False,
 
     data = CygnssSingleSat, CygnssMultiSat, or CygnssL2WindDisplay object
     indices = Indices (2-element tuple) to use to limit the period of data
-              shown (i.e., limit by time). Not usually necessary unless 
+              shown (i.e., limit by time). Not usually necessary unless
               processing more than one day's worth of data.
     min_samples = Minimum allowable track size (number of specular points)
     verbose = Set to True for some text updates while running
     filter = Set to True to filter each track
-    window = Window length of filter, in number of specular points. Must be odd.
+    window = Window length of filter, in # of specular points. Must be odd.
     """
     trl = []
     dts = get_datetime(data)
@@ -729,10 +729,12 @@ def get_tracks(data, indices=None, min_samples=10, verbose=False,
                     dsc.tws = ds.tws[labels == element]
                     dsc.rcg = ds.lon[labels == element]
                     dsc.datetimes = ds.datetimes[labels == element]
+                    dsc.sat = csat
+                    dsc.prn = gsat
                     trl.append(dsc)
     if filter:
         for tr in trl:
-           tr.filter_track(window=window)
+            tr.filter_track(window=window)
     return trl
 
 
